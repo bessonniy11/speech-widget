@@ -60,7 +60,12 @@ from PySide6.QtWidgets import (QApplication, QWidget, QSystemTrayIcon, QMenu,
 from PySide6.QtGui import (QPainter, QColor, QBrush, QPen, QScreen, QPaintEvent,
                          QMouseEvent, QKeyEvent, QIcon, QAction, QKeySequence)
 from PySide6.QtCore import (Qt, QTimer, QRectF, QPropertyAnimation, QEasingCurve,
-                          QPoint, Signal, Slot, QObject, Property, QEvent, QSettings)
+                          QPoint, Signal, Slot, QObject, Property, QEvent, QSettings,
+                          # --- Добавляем импорты для группы анимаций --- >
+                          QSequentialAnimationGroup, QPauseAnimation, QAbstractAnimation,
+                          QParallelAnimationGroup # Добавляем импорт QParallelAnimationGroup
+                          # --- < Добавляем импорты для группы анимаций ---
+                          )
 
 
 # --- Конфигурация (переносим, цвета теперь кортежи RGBA 0-255) ---
@@ -433,9 +438,18 @@ class SpeechWidget(QWidget):
         self.color_animation = QPropertyAnimation(self, b"_animated_bg_color")
         self.color_animation.setDuration(ANIMATION_DURATION_MS)
         self.color_animation.setEasingCurve(QEasingCurve.OutCubic) # Можно другую кривую
+
+        # --- Добавляем группу для анимации пульсации --- >
+        self.pulse_animation_group = QSequentialAnimationGroup(self)
+        # --- < Добавляем группу для анимации пульсации ---
+
         # --- ОТЛАДКА: Соединяем сигнал stateChanged ---
         # self.geometry_animation.stateChanged.connect(self._on_geom_anim_state_changed)
         # self.color_animation.stateChanged.connect(self._on_color_anim_state_changed)
+
+        # --- Добавляем слот для завершения пульсации --- >
+        self.pulse_animation_group.finished.connect(self._on_pulse_finished)
+        # --- < Добавляем слот для завершения пульсации ---
 
     def setupAudioProcessing(self):
         # Таймер для проверки очереди аудиоуровней
@@ -758,6 +772,10 @@ class SpeechWidget(QWidget):
     def toggle_visibility(self):
         self.setVisible(not self.isVisible())
         self.toggle_action.setText("Скрыть виджет" if self.isVisible() else "Показать виджет")
+        # --- Запускаем пульсацию, если виджет стал видимым --- >
+        if self.isVisible():
+            self.pulse_widget()
+        # --- < Запускаем пульсацию, если виджет стал видимым ---
 
     @Slot(QSystemTrayIcon.ActivationReason)
     def on_tray_icon_activated(self, reason):
@@ -833,6 +851,108 @@ class SpeechWidget(QWidget):
             # print("No saved position found, centering window.") # Закомментировано
             logging.info("No saved position found, centering window.")
             self._center_window() # Центрируем, если настроек нет
+
+    @Slot()
+    def pulse_widget(self, pulses=2): # Добавляем параметр количества пульсаций
+        """Запускает анимацию "пульсации" виджета."""
+        # Останавливаем предыдущую анимацию пульсации, если она запущена
+        if self.pulse_animation_group.state() == QAbstractAnimation.Running:
+            logging.debug("Pulse animation already running, stopping.")
+            self.pulse_animation_group.stop()
+
+        # Очищаем старые анимации из группы
+        self.pulse_animation_group.clear()
+
+        # Задаем начальное состояние (idle, если еще не там)
+        idle_geo, idle_color = self._get_target_geometry_and_color(is_visually_active=False)
+        if self.geometry() != idle_geo:
+            self.setGeometry(idle_geo)
+        if self._current_bg_color != idle_color:
+            self._current_bg_color = idle_color
+            self.update() # Обновляем, если цвет изменился
+
+        # Получаем геометрию и цвет для активного состояния
+        active_geo, active_color = self._get_target_geometry_and_color(is_visually_active=True)
+
+        # Определяем длительности фаз анимации
+        expand_duration = int(ANIMATION_DURATION_MS * 1.2) # Чуть дольше на расширение
+        collapse_duration = ANIMATION_DURATION_MS
+        pause_duration = 50 # Короткая пауза между пульсами
+
+        logging.info(f"Starting pulse animation ({pulses} pulses).")
+        for i in range(pulses):
+            # 1. Параллельная группа для расширения
+            expand_group = QParallelAnimationGroup()
+            anim_expand_geo = QPropertyAnimation(self, b"geometry")
+            anim_expand_geo.setStartValue(idle_geo)
+            anim_expand_geo.setEndValue(active_geo)
+            anim_expand_geo.setDuration(expand_duration)
+            anim_expand_geo.setEasingCurve(QEasingCurve.OutCubic)
+            expand_group.addAnimation(anim_expand_geo)
+
+            anim_expand_color = QPropertyAnimation(self, b"_animated_bg_color")
+            anim_expand_color.setStartValue(idle_color)
+            anim_expand_color.setEndValue(active_color)
+            anim_expand_color.setDuration(expand_duration)
+            anim_expand_color.setEasingCurve(QEasingCurve.OutCubic)
+            expand_group.addAnimation(anim_expand_color)
+
+            # Добавляем группу расширения в основную последовательность
+            self.pulse_animation_group.addAnimation(expand_group)
+
+            # 2. Параллельная группа для сжатия
+            collapse_group = QParallelAnimationGroup()
+            anim_collapse_geo = QPropertyAnimation(self, b"geometry")
+            anim_collapse_geo.setStartValue(active_geo)
+            anim_collapse_geo.setEndValue(idle_geo)
+            anim_collapse_geo.setDuration(collapse_duration)
+            anim_collapse_geo.setEasingCurve(QEasingCurve.InCubic) # Можно другую кривую
+            collapse_group.addAnimation(anim_collapse_geo)
+
+            anim_collapse_color = QPropertyAnimation(self, b"_animated_bg_color")
+            anim_collapse_color.setStartValue(active_color)
+            anim_collapse_color.setEndValue(idle_color)
+            anim_collapse_color.setDuration(collapse_duration)
+            anim_collapse_color.setEasingCurve(QEasingCurve.InCubic)
+            collapse_group.addAnimation(anim_collapse_color)
+
+            # Добавляем группу сжатия в основную последовательность
+            self.pulse_animation_group.addAnimation(collapse_group)
+
+            # 3. Добавляем паузу между пульсами (кроме последнего)
+            if i < pulses - 1:
+                self.pulse_animation_group.addPause(pause_duration)
+
+        # Запускаем всю последовательность
+        self.pulse_animation_group.start()
+
+    @Slot()
+    def _on_pulse_finished(self):
+        """Вызывается после завершения анимации пульсации."""
+        logging.info("Pulse animation finished.")
+        # Убедимся, что виджет в конечном idle состоянии (если анимация не была прервана)
+        if self.pulse_animation_group.state() != QAbstractAnimation.Stopped:
+             idle_geo, idle_color = self._get_target_geometry_and_color(is_visually_active=False)
+             # Проверяем, не активен ли он УЖЕ (например, из-за наведения мыши)
+             if not self._is_hovering and self._state != 'active':
+                 self.setGeometry(idle_geo)
+                 self._current_bg_color = idle_color
+                 self.update()
+             else:
+                 logging.debug("Pulse finished, but widget is already in active state (hover/recognition).")
+
+    def _get_target_geometry_and_color(self, is_visually_active):
+        """Вспомогательная функция для получения целевой геометрии и цвета."""
+        target_width = IDLE_WIDTH * ACTIVE_SCALE_FACTOR if is_visually_active else IDLE_WIDTH
+        target_height = IDLE_HEIGHT * ACTIVE_SCALE_FACTOR if is_visually_active else IDLE_HEIGHT
+        target_color = QColor(*(ACTIVE_COLOR if is_visually_active else IDLE_COLOR))
+
+        current_geo = self.geometry() # Используем текущую геометрию для центровки
+        target_rect = QRectF(0, 0, target_width, target_height)
+        target_rect.moveCenter(current_geo.center())
+        target_geometry = target_rect.toRect()
+
+        return target_geometry, target_color
 
 
 # --- Функции управления потоком Vosk ---
@@ -1061,10 +1181,11 @@ if __name__ == "__main__":
     keyboard_listener_thread.start()
 
     # 5. Отображение виджета и запуск цикла событий
-    # Не показываем виджет сразу, он в трее
     widget.show()
-    # print("Application started. Icon added to tray. Widget shown.") # Заменяем на logging
     logging.info("Application started. Icon added to tray. Widget shown.")
+    # --- Запускаем начальную пульсацию --- >
+    widget.pulse_widget()
+    # --- < Запускаем начальную пульсацию ---
 
     # --- Проверка и синхронизация реестра при старте (опционально, но полезно) ---
     if is_frozen():
