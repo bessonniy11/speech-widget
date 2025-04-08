@@ -3,7 +3,8 @@ rem Определяем переменные
 set APP_NAME="Speech Widget"
 set APP_DESC="Speech recognition widget"
 set COMPANY_NAME="Bessonniy"
-set APP_VERSION=1.0
+rem --- Убираем версию отсюда --- 
+rem set APP_VERSION=1.0
 set ICO_PATH="assets\icon.ico"
 set VOSK_MODEL_PATH=model
 set OUTPUT_DIR_ONEFILE=nuitka_dist_onefile
@@ -28,7 +29,6 @@ python -m nuitka ^
     --product-name=%APP_NAME% ^
     --file-description=%APP_DESC% ^
     --company-name=%COMPANY_NAME% ^
-    --file-version=%APP_VERSION% ^
     --output-filename=%APP_NAME%.exe ^
     speech_widget.py
 
