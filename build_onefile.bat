@@ -3,10 +3,17 @@ rem Определяем переменные
 set APP_NAME="Speech Widget"
 set APP_DESC="Speech recognition widget"
 set COMPANY_NAME="Bessonniy"
-set APP_VERSION=1.0
+set APP_VERSION=1.0.1
 set ICO_PATH="assets\icon.ico"
 set VOSK_MODEL_PATH=model
 set OUTPUT_DIR_ONEFILE=nuitka_dist_onefile
+
+rem --- Удаляем старую папку сборки, если она существует --- >
+if exist %OUTPUT_DIR_ONEFILE% (
+    echo Deleting previous build directory: %OUTPUT_DIR_ONEFILE%...
+    rd /s /q %OUTPUT_DIR_ONEFILE%
+)
+rem --- < Удаляем старую папку сборки ---
 
 echo Building onefile version (.exe)...
 

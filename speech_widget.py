@@ -12,6 +12,23 @@ import math
 from PIL import Image, ImageDraw # Уберем позже, если не нужно
 import winreg # Для работы с реестром Windows
 import os # Для работы с путями
+# --- Добавляем импорты для логирования ---
+import logging
+import tempfile
+# --- < Добавляем импорты для логирования ---
+
+# --- Настройка логирования --- >
+# Лог будет писаться в %TEMP%\speech_widget_log.txt
+log_file_path = os.path.join(tempfile.gettempdir(), "speech_widget_log.txt")
+logging.basicConfig(level=logging.INFO,
+                    filename=log_file_path,
+                    filemode='a', # 'a' - добавлять в конец, 'w' - перезаписывать
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+# --- < Настройка логирования ---
+
+# --- Версия приложения --- >
+__version__ = "1.0.1" # Задаем версию здесь
+# --- < Версия приложения ---
 
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller/Nuitka """
@@ -31,6 +48,9 @@ try:
 except ImportError:
     print("ОШИБКА: Не найдена библиотека pywin32.")
     print("Установите ее: pip install pywin32")
+    # --- Используем logging перед выходом --- >
+    logging.critical("ОШИБКА: Не найдена библиотека pywin32. Установите ее: pip install pywin32")
+    # --- < Используем logging перед выходом ---
     sys.exit(1)
 
 # Импорты PySide6
@@ -40,7 +60,12 @@ from PySide6.QtWidgets import (QApplication, QWidget, QSystemTrayIcon, QMenu,
 from PySide6.QtGui import (QPainter, QColor, QBrush, QPen, QScreen, QPaintEvent,
                          QMouseEvent, QKeyEvent, QIcon, QAction, QKeySequence)
 from PySide6.QtCore import (Qt, QTimer, QRectF, QPropertyAnimation, QEasingCurve,
-                          QPoint, Signal, Slot, QObject, Property, QEvent, QSettings)
+                          QPoint, Signal, Slot, QObject, Property, QEvent, QSettings,
+                          # --- Добавляем импорты для группы анимаций --- >
+                          QSequentialAnimationGroup, QPauseAnimation, QAbstractAnimation,
+                          QParallelAnimationGroup # Добавляем импорт QParallelAnimationGroup
+                          # --- < Добавляем импорты для группы анимаций ---
+                          )
 
 
 # --- Конфигурация (переносим, цвета теперь кортежи RGBA 0-255) ---
@@ -93,14 +118,17 @@ class SettingsDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Настройки Speech Widget")
+        # --- Используем __version__ в заголовке --- >
+        self.setWindowTitle(f"Настройки Speech Widget (v.{__version__})")
+        # --- < Используем __version__ в заголовке ---
         # --- Добавляем иконку окна --- >
         icon_path = resource_path("assets/icon.svg")
         dialog_icon = QIcon(icon_path)
         if not dialog_icon.isNull():
             self.setWindowIcon(dialog_icon)
         else:
-            print(f"Warning: Could not load settings dialog icon from '{icon_path}'.")
+            # print(f"Warning: Could not load settings dialog icon from '{icon_path}'.") # Заменяем print на logging
+            logging.warning(f"Could not load settings dialog icon from '{icon_path}'.")
         # --- < Добавляем иконку окна ---
         self.setMinimumWidth(300)
 
@@ -145,6 +173,7 @@ class SettingsDialog(QDialog):
         if new_hotkey.toString() != old_hotkey_str:
             settings.setValue("hotkey", new_hotkey.toString())
             # print(f"Settings saved. New hotkey: {new_hotkey.toString()}") # Закомментировано
+            logging.info(f"Settings saved. New hotkey: {new_hotkey.toString()}")
             self.hotkey_changed_signal.emit()
 
         # Автозапуск
@@ -153,6 +182,7 @@ class SettingsDialog(QDialog):
         if new_startup_state != old_startup_state:
             settings.setValue("startup_enabled", new_startup_state)
             # print(f"Settings saved. Startup enabled: {new_startup_state}") # Закомментировано
+            logging.info(f"Settings saved. Startup enabled: {new_startup_state}")
             self.startup_setting_changed_signal.emit(new_startup_state) # Посылаем сигнал
 
         self.accept()
@@ -278,8 +308,10 @@ class KeyboardListenerWorker(QObject):
         try:
             with keyboard.Listener(on_press=self._on_press, on_release=self._on_release) as self._listener:
                 self._listener.join()
-        except Exception as e: print(f"Error in keyboard listener: {e}") # Ошибки оставляем
-        finally: print("Keyboard listener thread finished.") # Статус оставляем
+        except Exception as e: # print(f"Error in keyboard listener: {e}") # Заменяем print на logging
+            logging.error(f"Error in keyboard listener: {e}", exc_info=True)
+        finally: # print("Keyboard listener thread finished.") # Заменяем print на logging
+            logging.info("Keyboard listener thread finished.")
 
     def _get_modifier_type(self, key):
         """Определяет тип модификатора по объекту pynput.Key."""
@@ -406,9 +438,18 @@ class SpeechWidget(QWidget):
         self.color_animation = QPropertyAnimation(self, b"_animated_bg_color")
         self.color_animation.setDuration(ANIMATION_DURATION_MS)
         self.color_animation.setEasingCurve(QEasingCurve.OutCubic) # Можно другую кривую
+
+        # --- Добавляем группу для анимации пульсации --- >
+        self.pulse_animation_group = QSequentialAnimationGroup(self)
+        # --- < Добавляем группу для анимации пульсации ---
+
         # --- ОТЛАДКА: Соединяем сигнал stateChanged ---
         # self.geometry_animation.stateChanged.connect(self._on_geom_anim_state_changed)
         # self.color_animation.stateChanged.connect(self._on_color_anim_state_changed)
+
+        # --- Добавляем слот для завершения пульсации --- >
+        self.pulse_animation_group.finished.connect(self._on_pulse_finished)
+        # --- < Добавляем слот для завершения пульсации ---
 
     def setupAudioProcessing(self):
         # Таймер для проверки очереди аудиоуровней
@@ -463,7 +504,8 @@ class SpeechWidget(QWidget):
         current_target_geom = self.geometry_animation.endValue() if is_animating_geom else self.geometry()
 
         if target_geometry != current_target_geom:
-            print(f"GUI: Animating geometry to {target_geometry}")
+            # print(f"GUI: Animating geometry to {target_geometry}") # Заменяем print на logging.debug
+            logging.debug(f"GUI: Animating geometry to {target_geometry}")
             self.geometry_animation.stop() # Останавливаем текущую, если есть
             self.geometry_animation.setStartValue(self.geometry()) # Начинаем с текущей
             self.geometry_animation.setEndValue(target_geometry)
@@ -473,7 +515,8 @@ class SpeechWidget(QWidget):
         current_target_color = self.color_animation.endValue() if is_animating_color else self._current_bg_color
 
         if target_color != current_target_color:
-            print(f"GUI: Animating color to {target_color.getRgb()}")
+            # print(f"GUI: Animating color to {target_color.getRgb()}") # Заменяем print на logging.debug
+            logging.debug(f"GUI: Animating color to {target_color.getRgb()}")
             self.color_animation.stop()
             self.color_animation.setStartValue(self._current_bg_color)
             self.color_animation.setEndValue(target_color)
@@ -729,6 +772,10 @@ class SpeechWidget(QWidget):
     def toggle_visibility(self):
         self.setVisible(not self.isVisible())
         self.toggle_action.setText("Скрыть виджет" if self.isVisible() else "Показать виджет")
+        # --- Запускаем пульсацию, если виджет стал видимым --- >
+        if self.isVisible():
+            self.pulse_widget()
+        # --- < Запускаем пульсацию, если виджет стал видимым ---
 
     @Slot(QSystemTrayIcon.ActivationReason)
     def on_tray_icon_activated(self, reason):
@@ -749,17 +796,29 @@ class SpeechWidget(QWidget):
     # Слот для обработки изменения настройки автозапуска
     @Slot(bool)
     def handle_startup_setting_change(self, enabled):
+        # --- Используем logging --- >
+        logging.info(f"Handling startup setting change. Enabled: {enabled}")
         if is_frozen(): # Модифицируем реестр ТОЛЬКО если запущено из .exe
-            exe_path = get_executable_path()
-            print(f"Handling startup change ({enabled}) for executable: {exe_path}")
+            exe_path = get_executable_path() # get_executable_path теперь тоже логирует
+            logging.info(f"Handling startup change ({enabled}) for executable: {exe_path}")
+            if not exe_path:
+                logging.error("Could not determine executable path.")
+                QMessageBox.warning(self, "Ошибка", "Не удалось определить путь к исполняемому файлу для добавления в автозагрузку.")
+                return
+
             if enabled:
-                add_to_startup(exe_path)
+                success = add_to_startup(exe_path) # add_to_startup теперь тоже логирует
+                if not success:
+                    QMessageBox.warning(self, "Ошибка", f"Не удалось добавить приложение в автозагрузку. Проверьте лог-файл: {log_file_path}")
             else:
-                remove_from_startup()
+                success = remove_from_startup() # remove_from_startup теперь тоже логирует
+                if not success:
+                    QMessageBox.warning(self, "Ошибка", f"Не удалось удалить приложение из автозагрузки. Проверьте лог-файл: {log_file_path}")
         else:
-            print("Running as script, registry modification skipped.")
+            logging.warning("Running as script, registry modification skipped.")
             QMessageBox.information(self, "Информация",
                                     "Настройка автозапуска применится только для установленной версии приложения (запущенной из .exe файла).")
+        # --- < Используем logging ---
 
     def _load_initial_position(self):
         """Загружает и применяет сохраненную позицию окна."""
@@ -774,20 +833,126 @@ class SpeechWidget(QWidget):
                 pos_x = int(saved_x)
                 pos_y = int(saved_y)
                 # print(f"Loading saved position: x={pos_x}, y={pos_y}") # Закомментировано
+                logging.info(f"Loading saved position: x={pos_x}, y={pos_y}")
                 # Проверим, чтобы координаты были в пределах видимости экранов
                 screen_geometry = QApplication.primaryScreen().availableGeometry() # Геометрия основного экрана
                 # Простая проверка, можно улучшить для мультимониторных систем
                 if screen_geometry.contains(pos_x, pos_y):
                      self.move(pos_x, pos_y)
                 else:
-                     print("Saved position is outside screen bounds, centering instead.")
+                     # print("Saved position is outside screen bounds, centering instead.")
+                     logging.warning("Saved position is outside screen bounds, centering instead.")
                      self._center_window() # Центрируем, если позиция некорректна
             except (ValueError, TypeError):
-                print("Error loading saved position, centering instead.")
+                # print("Error loading saved position, centering instead.")
+                logging.error("Error loading saved position, centering instead.")
                 self._center_window() # Центрируем при ошибке
         else:
             # print("No saved position found, centering window.") # Закомментировано
+            logging.info("No saved position found, centering window.")
             self._center_window() # Центрируем, если настроек нет
+
+    @Slot()
+    def pulse_widget(self, pulses=2): # Добавляем параметр количества пульсаций
+        """Запускает анимацию "пульсации" виджета."""
+        # Останавливаем предыдущую анимацию пульсации, если она запущена
+        if self.pulse_animation_group.state() == QAbstractAnimation.Running:
+            logging.debug("Pulse animation already running, stopping.")
+            self.pulse_animation_group.stop()
+
+        # Очищаем старые анимации из группы
+        self.pulse_animation_group.clear()
+
+        # Задаем начальное состояние (idle, если еще не там)
+        idle_geo, idle_color = self._get_target_geometry_and_color(is_visually_active=False)
+        if self.geometry() != idle_geo:
+            self.setGeometry(idle_geo)
+        if self._current_bg_color != idle_color:
+            self._current_bg_color = idle_color
+            self.update() # Обновляем, если цвет изменился
+
+        # Получаем геометрию и цвет для активного состояния
+        active_geo, active_color = self._get_target_geometry_and_color(is_visually_active=True)
+
+        # Определяем длительности фаз анимации
+        expand_duration = int(ANIMATION_DURATION_MS * 1.2) # Чуть дольше на расширение
+        collapse_duration = ANIMATION_DURATION_MS
+        pause_duration = 50 # Короткая пауза между пульсами
+
+        logging.info(f"Starting pulse animation ({pulses} pulses).")
+        for i in range(pulses):
+            # 1. Параллельная группа для расширения
+            expand_group = QParallelAnimationGroup()
+            anim_expand_geo = QPropertyAnimation(self, b"geometry")
+            anim_expand_geo.setStartValue(idle_geo)
+            anim_expand_geo.setEndValue(active_geo)
+            anim_expand_geo.setDuration(expand_duration)
+            anim_expand_geo.setEasingCurve(QEasingCurve.OutCubic)
+            expand_group.addAnimation(anim_expand_geo)
+
+            anim_expand_color = QPropertyAnimation(self, b"_animated_bg_color")
+            anim_expand_color.setStartValue(idle_color)
+            anim_expand_color.setEndValue(active_color)
+            anim_expand_color.setDuration(expand_duration)
+            anim_expand_color.setEasingCurve(QEasingCurve.OutCubic)
+            expand_group.addAnimation(anim_expand_color)
+
+            # Добавляем группу расширения в основную последовательность
+            self.pulse_animation_group.addAnimation(expand_group)
+
+            # 2. Параллельная группа для сжатия
+            collapse_group = QParallelAnimationGroup()
+            anim_collapse_geo = QPropertyAnimation(self, b"geometry")
+            anim_collapse_geo.setStartValue(active_geo)
+            anim_collapse_geo.setEndValue(idle_geo)
+            anim_collapse_geo.setDuration(collapse_duration)
+            anim_collapse_geo.setEasingCurve(QEasingCurve.InCubic) # Можно другую кривую
+            collapse_group.addAnimation(anim_collapse_geo)
+
+            anim_collapse_color = QPropertyAnimation(self, b"_animated_bg_color")
+            anim_collapse_color.setStartValue(active_color)
+            anim_collapse_color.setEndValue(idle_color)
+            anim_collapse_color.setDuration(collapse_duration)
+            anim_collapse_color.setEasingCurve(QEasingCurve.InCubic)
+            collapse_group.addAnimation(anim_collapse_color)
+
+            # Добавляем группу сжатия в основную последовательность
+            self.pulse_animation_group.addAnimation(collapse_group)
+
+            # 3. Добавляем паузу между пульсами (кроме последнего)
+            if i < pulses - 1:
+                self.pulse_animation_group.addPause(pause_duration)
+
+        # Запускаем всю последовательность
+        self.pulse_animation_group.start()
+
+    @Slot()
+    def _on_pulse_finished(self):
+        """Вызывается после завершения анимации пульсации."""
+        logging.info("Pulse animation finished.")
+        # Убедимся, что виджет в конечном idle состоянии (если анимация не была прервана)
+        if self.pulse_animation_group.state() != QAbstractAnimation.Stopped:
+             idle_geo, idle_color = self._get_target_geometry_and_color(is_visually_active=False)
+             # Проверяем, не активен ли он УЖЕ (например, из-за наведения мыши)
+             if not self._is_hovering and self._state != 'active':
+                 self.setGeometry(idle_geo)
+                 self._current_bg_color = idle_color
+                 self.update()
+             else:
+                 logging.debug("Pulse finished, but widget is already in active state (hover/recognition).")
+
+    def _get_target_geometry_and_color(self, is_visually_active):
+        """Вспомогательная функция для получения целевой геометрии и цвета."""
+        target_width = IDLE_WIDTH * ACTIVE_SCALE_FACTOR if is_visually_active else IDLE_WIDTH
+        target_height = IDLE_HEIGHT * ACTIVE_SCALE_FACTOR if is_visually_active else IDLE_HEIGHT
+        target_color = QColor(*(ACTIVE_COLOR if is_visually_active else IDLE_COLOR))
+
+        current_geo = self.geometry() # Используем текущую геометрию для центровки
+        target_rect = QRectF(0, 0, target_width, target_height)
+        target_rect.moveCenter(current_geo.center())
+        target_geometry = target_rect.toRect()
+
+        return target_geometry, target_color
 
 
 # --- Функции управления потоком Vosk ---
@@ -821,9 +986,12 @@ def recognition_thread_func_pyside():
                 keyboard_controller.release(v_key_code)
                 keyboard_controller.release(keyboard.Key.ctrl)
                 print("Vosk thread: Pasted.")
-            except Exception as paste_err: print(f"Vosk thread: Paste error: {paste_err}")
-    except sd.PortAudioError as pae: print(f"Vosk thread: PortAudioError: {pae}")
-    except Exception as e: print(f"Vosk thread: Error: {e}")
+            except Exception as paste_err: # print(f"Vosk thread: Paste error: {paste_err}") # Заменяем на logging
+                logging.error(f"Vosk thread: Paste error: {paste_err}", exc_info=True)
+    except sd.PortAudioError as pae: # print(f"Vosk thread: PortAudioError: {pae}") # Заменяем на logging
+        logging.error(f"Vosk thread: PortAudioError: {pae}")
+    except Exception as e: # print(f"Vosk thread: Error: {e}") # Заменяем на logging
+        logging.error(f"Vosk thread: Error: {e}", exc_info=True)
     finally:
         if stream and stream.active: stream.stop(); stream.close()
         # Исправляем очистку очереди
@@ -877,17 +1045,24 @@ def stop_recognition_thread():
 
 # --- Функции для работы с автозапуском ---
 def is_frozen():
-    """ Проверяет, запущено ли приложение как 'замороженное' (скомпилированное) """
-    return getattr(sys, 'frozen', False)
+    """ Проверяет, запущено ли приложение как 'замороженное' .exe """
+    # Для Nuitka one-file sys.frozen и sys._MEIPASS могут быть не установлены.
+    # Надежный способ определить .exe - проверить sys.argv[0].
+    return hasattr(sys, 'frozen') or hasattr(sys, '_MEIPASS') or sys.argv[0].lower().endswith('.exe')
 
 def get_executable_path():
-    """ Возвращает путь к текущему исполняемому файлу """
+    """ Возвращает путь к исполняемому файлу (.exe) или скрипту (.py) """
     if is_frozen():
-        return sys.executable # Путь к .exe
+        # Для Nuitka one-file sys.executable указывает на временный python.exe,
+        # а sys.argv[0] - на оригинальный .exe файл.
+        path = os.path.abspath(sys.argv[0])
+        logging.info(f"Running frozen. Determined executable path (from sys.argv[0]): {path}")
+        return path
     else:
         # Если запущен как скрипт, возвращаем путь к скрипту
-        # Это нужно для тестов, но в реестр будем писать только путь к .exe
-        return os.path.abspath(sys.argv[0])
+        path = os.path.abspath(sys.argv[0])
+        logging.info(f"Running as script. Path: {path}")
+        return path
 
 def add_to_startup(executable_path):
     """ Добавляет приложение в автозагрузку Windows """
@@ -897,6 +1072,9 @@ def add_to_startup(executable_path):
 
     # Путь к исполняемому файлу должен быть в кавычках, если содержит пробелы
     path_value = f'"{executable_path}"'
+    # --- Логируем попытку --- >
+    logging.info(f"Attempting to add to startup. Key: {key_path}\{key_name}, Value: {path_value}")
+    # --- < Логируем попытку ---
 
     try:
         # Открываем ключ реестра с правами на запись
@@ -905,13 +1083,16 @@ def add_to_startup(executable_path):
         # Устанавливаем значение (имя ключа, значение - путь, тип - REG_SZ строка)
         winreg.SetValueEx(key, key_name, 0, winreg.REG_SZ, path_value)
         winreg.CloseKey(key)
-        print(f"Successfully added to startup: {path_value}")
+        # print(f"Successfully added to startup: {path_value}") # Заменяем на logging
+        logging.info(f"Successfully added to startup.")
         return True
     except OSError as e:
-        print(f"Error adding to startup: {e}", file=sys.stderr)
+        # print(f"Error adding to startup: {e}", file=sys.stderr) # Заменяем на logging
+        logging.error(f"OSError adding to startup: {e}")
         return False
     except Exception as e:
-        print(f"Unexpected error adding to startup: {e}", file=sys.stderr)
+        # print(f"Unexpected error adding to startup: {e}", file=sys.stderr) # Заменяем на logging
+        logging.exception(f"Unexpected error adding to startup") # Логируем с traceback
         return False
 
 
@@ -919,44 +1100,66 @@ def remove_from_startup():
     """ Удаляет приложение из автозагрузки Windows """
     key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
     key_name = APP_REGISTRY_KEY_NAME
+    # --- Логируем попытку --- >
+    logging.info(f"Attempting to remove from startup. Key: {key_path}\{key_name}")
+    # --- < Логируем попытку ---
 
     try:
         key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_WRITE)
         winreg.DeleteValue(key, key_name)
         winreg.CloseKey(key)
-        print(f"Successfully removed from startup.")
+        # print(f"Successfully removed from startup.") # Заменяем на logging
+        logging.info(f"Successfully removed from startup.")
         return True
     except FileNotFoundError:
         # Ключа и так не было, это нормально
-        print(f"Startup key not found, nothing to remove.")
+        # print(f"Startup key not found, nothing to remove.") # Заменяем на logging
+        logging.warning(f"Startup key not found, nothing to remove.")
         return True
     except OSError as e:
-        print(f"Error removing from startup: {e}", file=sys.stderr)
+        # print(f"Error removing from startup: {e}", file=sys.stderr) # Заменяем на logging
+        logging.error(f"OSError removing from startup: {e}")
         return False
     except Exception as e:
-        print(f"Unexpected error removing from startup: {e}", file=sys.stderr)
+        # print(f"Unexpected error removing from startup: {e}", file=sys.stderr) # Заменяем на logging
+        logging.exception(f"Unexpected error removing from startup") # Логируем с traceback
         return False
 
 
 # --- Основной блок запуска ---
 if __name__ == "__main__":
+    # --- Добавляем стартовое логирование --- >
+    logging.info("-----------------------------------------")
+    logging.info("Application starting...")
+    logging.info(f"Frozen: {is_frozen()}")
+    logging.info(f"sys.argv: {sys.argv}")
+    logging.info(f"sys.executable: {sys.executable}")
+    logging.info(f"os.getcwd(): {os.getcwd()}")
+    logging.info(f"Attempting to set Org/App Name for QSettings...")
+    # --- < Добавляем стартовое логирование ---
+
     # 0. Настройка QSettings (чтобы сохранялись в предсказуемое место)
     QApplication.setOrganizationName("MyCompany") # Замени на свое имя/название
     QApplication.setApplicationName("SpeechWidget")
+    logging.info(f"QSettings Org: {QApplication.organizationName()}, App: {QApplication.applicationName()}")
 
     # 1. Загрузка модели Vosk
     try:
         vosk.SetLogLevel(-1)
-        print(f"Loading Vosk model from: {MODEL_PATH}...") # Добавил путь в лог
+        # print(f"Loading Vosk model from: {MODEL_PATH}...") # Заменяем на logging
+        logging.info(f"Loading Vosk model from: {MODEL_PATH}...")
         model = vosk.Model(MODEL_PATH)
         recognizer = vosk.KaldiRecognizer(model, SAMPLE_RATE)
         recognizer.SetWords(False)
-        print("Model loaded.")
+        # print("Model loaded.") # Заменяем на logging
+        logging.info("Model loaded.")
     except FileNotFoundError:
-        print(f"ERROR: Vosk model folder not found at '{MODEL_PATH}'")
+        # print(f"ERROR: Vosk model folder not found at '{MODEL_PATH}'") # Заменяем на logging
+        logging.critical(f"ERROR: Vosk model folder not found at '{MODEL_PATH}'")
         sys.exit(1)
     except Exception as e:
-        print(f"ERROR: Failed to load Vosk model: {e}")
+        # print(f"ERROR: Failed to load Vosk model: {e}") # Заменяем на logging
+        logging.critical(f"ERROR: Failed to load Vosk model: {e}", exc_info=True)
         sys.exit(1)
 
     # 2. Создание QApplication
@@ -978,9 +1181,11 @@ if __name__ == "__main__":
     keyboard_listener_thread.start()
 
     # 5. Отображение виджета и запуск цикла событий
-    # Не показываем виджет сразу, он в трее
     widget.show()
-    print("Application started. Icon added to tray. Widget shown.")
+    logging.info("Application started. Icon added to tray. Widget shown.")
+    # --- Запускаем начальную пульсацию --- >
+    widget.pulse_widget()
+    # --- < Запускаем начальную пульсацию ---
 
     # --- Проверка и синхронизация реестра при старте (опционально, но полезно) ---
     if is_frozen():
@@ -988,57 +1193,70 @@ if __name__ == "__main__":
         # Проверяем реальное состояние в реестре (можно реализовать функцию check_startup_status)
         # Если настройка и реестр расходятся, можно синхронизировать или вывести сообщение
         # Пример: if check_startup_status() != startup_enabled_setting: sync_startup_registry()
-        print("Running as executable.")
+        # print("Running as executable.") # Заменяем на logging
+        logging.info("Running as executable.")
     else:
-        print("Running as script.")
+        # print("Running as script.") # Заменяем на logging
+        logging.info("Running as script.")
     # --- Конец проверки при старте ---
 
     exit_code = app.exec()
-
     try:
         # 6. Гарантированное завершение работы
-        print("Executing finally block...")
+        # print("Executing finally block...") # Заменяем на logging
+        logging.info("Attempting shutdown sequence...")
         if keyboard_listener_worker: keyboard_listener_worker.stop()
         stop_recognition_thread() # Посылаем сигнал потоку Vosk
 
         # Явный вызов quit для приложения, если оно еще работает
         if app and QApplication.instance(): # Проверяем, существует ли еще экземпляр
-             print("Calling app.quit()...")
+             # print("Calling app.quit()...") # Заменяем на logging
+             logging.info("Calling app.quit()...")
              QApplication.quit()
 
         # Опционально: дождаться завершения потоков
         # if keyboard_listener_thread and keyboard_listener_thread.is_alive(): keyboard_listener_thread.join(timeout=0.5)
         # if vosk_thread and vosk_thread.is_alive(): vosk_thread.join(timeout=0.5)
-        print("Finished.")
+        # print("Finished.") # Заменяем на logging
+        logging.info(f"Exiting with code {exit_code}.")
         sys.exit(exit_code) # Выход с соответствующим кодом
 
     except KeyboardInterrupt:
-        print("KeyboardInterrupt received, shutting down.")
+        # print("KeyboardInterrupt received, shutting down.") # Заменяем на logging
+        logging.warning("KeyboardInterrupt received, shutting down.")
         exit_code = 1 # Указываем код ошибки
     except FileNotFoundError:
-        print(f"ERROR: Vosk model folder not found at '{MODEL_PATH}'")
+        # print(f"ERROR: Vosk model folder not found at '{MODEL_PATH}'") # Заменяем на logging
+        logging.critical(f"ERROR: Vosk model folder not found at '{MODEL_PATH}'")
         exit_code = 1
     except ImportError as e:
          # ... (обработка ImportError как раньше) ...
+         logging.critical(f"ImportError during shutdown or earlier: {e}", exc_info=True)
          exit_code = 1
     except Exception as e:
-        print(f"Unhandled exception in main: {e}")
+        # print(f"Unhandled exception in main: {e}") # Заменяем на logging
+        logging.critical(f"Unhandled exception in main: {e}", exc_info=True)
         import traceback
-        traceback.print_exc()
+        # traceback.print_exc() # Убираем, т.к. logging.exception сделает это
         exit_code = 1
     finally:
-        # 6. Гарантированное завершение работы
-        print("Executing finally block...")
-        if keyboard_listener_worker: keyboard_listener_worker.stop()
-        stop_recognition_thread() # Посылаем сигнал потоку Vosk
+        # 6. Гарантированное завершение работы (повторный блок на всякий случай, если исключение было до первого finally)
+        # print("Executing final finally block...") # Заменяем на logging
+        logging.info("Executing final finally block...")
+        # Стараемся остановить потоки еще раз, если возможно
+        try:
+            if 'keyboard_listener_worker' in locals() and keyboard_listener_worker: keyboard_listener_worker.stop()
+        except Exception as e_stop: logging.error(f"Error stopping kbd listener in final finally: {e_stop}")
+        try:
+            if 'stop_recognition_thread' in locals(): stop_recognition_thread()
+        except Exception as e_stop: logging.error(f"Error stopping vosk thread in final finally: {e_stop}")
 
         # Явный вызов quit для приложения, если оно еще работает
-        if app and QApplication.instance(): # Проверяем, существует ли еще экземпляр
-             print("Calling app.quit()...")
-             QApplication.quit()
+        try:
+            if 'app' in locals() and app and QApplication.instance(): # Проверяем, существует ли еще экземпляр
+                 logging.info("Calling app.quit() in final finally...")
+                 QApplication.quit()
+        except Exception as e_quit: logging.error(f"Error quitting app in final finally: {e_quit}")
 
-        # Опционально: дождаться завершения потоков
-        # if keyboard_listener_thread and keyboard_listener_thread.is_alive(): keyboard_listener_thread.join(timeout=0.5)
-        # if vosk_thread and vosk_thread.is_alive(): vosk_thread.join(timeout=0.5)
-        print("Finished.")
+        logging.info(f"Final exit with code {exit_code}.")
         sys.exit(exit_code) # Выход с соответствующим кодом
