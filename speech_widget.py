@@ -26,6 +26,10 @@ logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 # --- < Настройка логирования ---
 
+# --- Версия приложения --- >
+__version__ = "1.0.0" # Задаем версию здесь
+# --- < Версия приложения ---
+
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller/Nuitka """
     try:
@@ -109,7 +113,9 @@ class SettingsDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Настройки Speech Widget")
+        # --- Используем __version__ в заголовке --- >
+        self.setWindowTitle(f"Настройки Speech Widget (v.{__version__})")
+        # --- < Используем __version__ в заголовке ---
         # --- Добавляем иконку окна --- >
         icon_path = resource_path("assets/icon.svg")
         dialog_icon = QIcon(icon_path)
