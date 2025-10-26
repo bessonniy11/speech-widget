@@ -26,6 +26,7 @@ logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 # --- < Настройка логирования ---
 
+
 # --- Версия приложения --- >
 __version__ = "1.0.2" # Задаем версию здесь
 # --- < Версия приложения ---
