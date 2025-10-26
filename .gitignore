@@ -3,6 +3,10 @@ nuitka_dist_onefile/
 nuitka_dist_installer/
 dist_installer/
 
+#models
+model
+model_old
+
 # Python cache
 __pycache__/
 

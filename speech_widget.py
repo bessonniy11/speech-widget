@@ -28,7 +28,7 @@ logging.basicConfig(level=logging.INFO,
 
 
 # --- Версия приложения --- >
-__version__ = "1.0.2" # Задаем версию здесь
+__version__ = "1.0.3" # Задаем версию здесь
 # --- < Версия приложения ---
 
 def resource_path(relative_path):
