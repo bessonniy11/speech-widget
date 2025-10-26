@@ -6,6 +6,7 @@ dist_installer/
 #models
 model
 model_old
+model_old2
 
 # Python cache
 __pycache__/
