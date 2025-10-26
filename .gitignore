@@ -8,3 +8,7 @@ __pycache__/
 
 .cursor
 .specify
+
+nuitka-crash-report.xml
+.vscode/
+debug_output.txt

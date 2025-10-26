@@ -1,89 +1,97 @@
 # Speech Widget
 
-Небольшой голосовой виджет для Windows, позволяющий диктовать текст в любое приложение, перехватывать глобальные сочетания клавиш, управлять буфером обмена и отображать компактный интерфейс поверх всех окон. Проект построен на Python (PySide6, Vosk и др.) и предназначен для локальной офлайн-работы.
+Небольшой голосовой виджет для Windows, который позволяет диктовать текст в любое приложение, перехватывать глобальные сочетания клавиш, управлять буфером обмена и выводить компактный интерфейс поверх всех окон. Проект написан на Python и использует PySide6, Vosk и другие локальные библиотеки, поэтому работает полностью офлайн.
 
 ## Возможности
-- Распознавание русского языка офлайн через Vosk.
-- Плавающее окно-виджет с анимированными индикаторами активности микрофона.
-- Глобальное горячее сочетание (по умолчанию `Ctrl+Space`) для запуска диктовки из любого окна.
-- Подсветка областей распознавания, логирование событий и управление автозапуском.
-- Интеграция с буфером обмена и автоматическая вставка распознанного текста.
+- Распознавание речи офлайн (модель Vosk).
+- Плавающая панель с индикатором активности микрофона.
+- Глобальное сочетание клавиш (по умолчанию `Ctrl+Space`) для быстрого запуска диктовки.
+- Управление буфером обмена и автоматическое вставление распознанного текста.
+- Автозапуск, логирование и управление через иконку в системном трее.
 
 ## Требования
-1. **Python 3.9+** (установлен в систему и доступен в `PATH`).
-2. **Системный микрофон** и права доступа к нему в Windows.
-3. **Модель Vosk** — по умолчанию ожидается русская модель `vosk-model-small-ru-0.22`, распакованная в директорию `model`.
-4. Для сборки исполняемых файлов и установщика дополнительно потребуются:
-   - `nuitka` + Microsoft Visual C++ build tools (часть Visual Studio).
-   - Inno Setup 6 (для генерации установщика).
+1. **Python 3.9+**, установленный и доступный в `PATH`.
+2. **Микрофон** с разрешением на использование в Windows.
+3. **Модель Vosk** — по умолчанию ожидается `vosk-model-small-ru-0.22`, распакованная в каталог `model`.
+4. Для сборки исполняемых файлов:
+   - `nuitka`, `numpy`, Microsoft Visual C++ Build Tools (доступны через Visual Studio или Build Tools).
+   - Inno Setup 6 (компилятор `ISCC.exe`).
 
 ## Установка зависимостей
 ```powershell
 python -m pip install --upgrade pip
-pip install vosk sounddevice pynput pyperclip Pillow PySide6 pywin32 nuitka
+pip install numpy vosk sounddevice pynput pyperclip Pillow PySide6 pywin32 nuitka
 ```
 
-Модель Vosk скачивается отдельно: [https://alphacephei.com/vosk/models](https://alphacephei.com/vosk/models). Распакуйте содержимое архива в папку `model` рядом с `speech_widget.py`.
+Модель Vosk скачивается отдельно: [https://alphacephei.com/vosk/models](https://alphacephei.com/vosk/models). Распакуйте архив в папку `model`, которая лежит рядом со `speech_widget.py`.
 
 ## Запуск из исходников
 ```powershell
 python speech_widget.py
 ```
 
-При первом запуске приложению может потребоваться разрешение на использование микрофона. Логи работы пишутся в файл `%TEMP%\speech_widget_log.txt`.
+Логи пишутся в `%TEMP%\speech_widget_log.txt`. При первом запуске приложение может запросить разрешение на использование микрофона.
 
-## Сборка однофайловой версии (.exe)
-Сценарий `build_onefile.bat` собирает автономный `.exe`, который можно переносить без установки.
-
-1. Проверьте наличие компилятора C++ (запустите «Developer Command Prompt for VS» либо убедитесь, что `cl.exe` доступен).
-2. Запустите:
+## Сборка переносимого `.exe`
+1. Убедитесь, что установлен компилятор MSVC (запустите «Developer Command Prompt for VS» либо выполните `vcvarsall.bat`).
+2. Выполните:
    ```powershell
    .\build_onefile.bat
    ```
-3. Готовый файл `Speech Widget.exe` появится в `nuitka_dist_onefile\`.
+3. Готовый файл `Speech Widget.exe` появится в папке `nuitka_dist_onefile`.
 
-Скрипт самостоятельно подставляет версию из `speech_widget.__version__`, включается иконка и модель Vosk.
+## Сборка установщика
+Скрипт `build_installer.bat` выполняет оба шага: собирает standalone-директорию через Nuitka и упаковку Inno Setup. Запускайте его из «x64 Native Tools Command Prompt for VS» (или другой консоли, где доступен `cl.exe`).
 
-## Сборка установщика (Inno Setup)
-`build_installer.bat` готовит полноценный установщик, чтобы Windows не запрашивала разрешение на микрофон при каждом запуске (приложение ставится в стабильный путь).
-
-### Подготовка
-- Убедитесь, что Inno Setup 6 установлен (по умолчанию в `C:\Program Files (x86)\Inno Setup 6\ISCC.exe`).  
-  Если путь другой, установите переменную окружения `ISCC_PATH`, указывающую на `ISCC.exe`.
-- Выполните зависимости из предыдущих разделов (`pip install ...`, модель Vosk и т.д.).
-
-### Сборка
 ```powershell
 .\build_installer.bat
 ```
-Сценарий выполнит три шага:
-1. Nuitka собирает папку `nuitka_dist_installer\speech_widget.dist` со всеми библиотеками.
-2. В папку `dist_installer\` помещается итоговый установщик `SpeechWidgetInstaller.exe`.
-3. Версия и метаданные берутся из исходного кода, что упрощает выпуск обновлений.
 
-### Установка и обновление
-- Запустите `SpeechWidgetInstaller.exe` и следуйте мастеру установки.
-- По умолчанию приложение ставится в `C:\Program Files\Speech Widget`.
-- Повторный запуск установщика обновит существующую установку без потери прав доступа.
+Если всё прошло успешно, установщик будет лежать в `dist_installer\SpeechWidgetInstaller.exe`.
 
-## Структура проекта
+### Ручная сборка (при необходимости)
+Если требуется выполнить шаги вручную:
+1. Nuitka:
+   ```powershell
+   python -m nuitka --standalone --windows-console-mode=disable --enable-plugin=pyside6 --msvc=latest `
+       --include-data-dir=model=model --include-data-dir=assets=assets `
+       --output-dir=nuitka_dist_installer --windows-icon-from-ico=assets\icon.ico `
+       --product-name="Speech Widget" --file-description="Speech recognition widget" `
+       --company-name=Bessonniy --file-version=1.0.2 `
+       --output-filename=SpeechWidget.exe speech_widget.py
+   ```
+2. Inno Setup:
+   ```powershell
+   "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+       "/DMyAppName=Speech Widget" `
+       "/DMyAppVersion=1.0.2" `
+       "/DMyAppPublisher=Bessonniy" `
+       "/DMyAppExeName=SpeechWidget.exe" `
+       "/DMyOutputDir=D:\areact\speech-widget\dist_installer" `
+       "/DMyOutputBaseFilename=SpeechWidgetInstaller" `
+       "/DMyDistDir=D:\areact\speech-widget\nuitka_dist_installer\speech_widget.dist" `
+       "/DMyIconPath=D:\areact\speech-widget\assets\icon.ico" `
+       "D:\areact\speech-widget\installer\speech_widget.iss"
+   ```
+
+## Структура репозитория
 ```
-assets/                 — иконка приложения и дополнительные ресурсы UI
-docs/                   — спецификация, план и задачи
+assets/                 — иконки и дополнительные ресурсы
+docs/                   — спецификация, план, задачи
 installer/speech_widget.iss — шаблон установщика Inno Setup
-model/                  — директория с моделью Vosk (не входит в репозиторий)
-nuitka_dist_onefile/    — результат сборки однофайловой версии (игнорируется Git)
-nuitka_dist_installer/  — промежуточный вывод Nuitka для установщика (игнорируется Git)
-dist_installer/         — итоговые файлы установщика (игнорируются Git)
+model/                  — модель Vosk (не версионируется)
+nuitka_dist_onefile/    — результат onefile-сборки (игнорируется git)
+nuitka_dist_installer/  — standalone-вывод Nuitka для установщика (игнорируется git)
+dist_installer/         — готовые установщики (игнорируются git)
 speech_widget.py        — основной код приложения
-build_onefile.bat       — сборка переносимого `.exe`
+build_onefile.bat       — сборка переносимого .exe
 build_installer.bat     — сборка установщика
 ```
 
-## Отладка
-- Логи собираются в `%TEMP%\speech_widget_log.txt`.
-- При проблемах с устройством записи проверьте настройки в Windows → «Конфиденциальность → Микрофон».
-- Для удаления автоматического запуска используйте пункт контекстного меню значка в трее.
+## Отладка и поддержка
+- Логи: `%TEMP%\speech_widget_log.txt`.
+- Если приложение не появляется в трее, проверьте наличие `SpeechWidget.exe` в Диспетчере задач и откройте лог.
+- Для сброса положения окна удалите ключ `HKEY_CURRENT_USER\Software\MyCompany\SpeechWidget`.
 
 ## Лицензия
-Проект распространяется по лицензии, указанной в файле `LICENSE`.
+Подробнее в файле `LICENSE`.
