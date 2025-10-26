@@ -4,9 +4,8 @@ nuitka_dist_installer/
 dist_installer/
 
 #models
-model
-model_old
-model_old2
+model/
+model_old/
 
 # Python cache
 __pycache__/
