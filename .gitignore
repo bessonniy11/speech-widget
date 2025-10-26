@@ -2,6 +2,7 @@
 nuitka_dist_onefile/
 nuitka_dist_installer/
 dist_installer/
+_nuitka_dist_onefile/
 
 #models
 model/
