@@ -23,7 +23,7 @@ Follow-up TODOs: TODO(RATIFICATION_DATE): Clarify original adoption date if avai
 ## Core Principles
 
 ### I. User-Centric Design
-Every feature and interaction MUST prioritize the user experience. This includes intuitive controls, clear visual feedback, and adherence to platform UI/UX guidelines for Flutter applications. The application widget MUST be movable, always on top by default, and provide clear visual cues for its state (idle, hovering, listening).
+Every feature and interaction MUST prioritize the user experience. This includes intuitive controls, clear visual feedback, and adherence to platform UI/UX guidelines for **Python/PySide6 applications**. The application widget MUST be movable, always on top by default, and provide clear visual cues for its state (idle, hovering, listening).
 <!-- Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
 
 ### II. Accessibility & Usability
@@ -39,7 +39,7 @@ The application MUST be performant and responsive, with smooth widget animations
 <!-- Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
 
 ### V. Maintainability & Extensibility
-The codebase MUST be well-structured, modular, and easy to maintain and extend. This includes clear separation of concerns, comprehensive documentation, and adherence to Flutter best practices. Future enhancements (e.g., more speech recognition options, cloud integration) should be straightforward to implement.
+The codebase MUST be well-structured, modular, and easy to maintain and extend. This includes clear separation of concerns, comprehensive documentation, and adherence to **Python/PySide6** best practices. Future enhancements (e.g., more speech recognition options, cloud integration) should be straightforward to implement.
 <!-- Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
 
 ## Settings and Configuration
