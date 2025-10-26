@@ -27,7 +27,7 @@ logging.basicConfig(level=logging.INFO,
 # --- < Настройка логирования ---
 
 # --- Версия приложения --- >
-__version__ = "1.0.1" # Задаем версию здесь
+__version__ = "1.0.2" # Задаем версию здесь
 # --- < Версия приложения ---
 
 def resource_path(relative_path):
@@ -1073,7 +1073,7 @@ def add_to_startup(executable_path):
     # Путь к исполняемому файлу должен быть в кавычках, если содержит пробелы
     path_value = f'"{executable_path}"'
     # --- Логируем попытку --- >
-    logging.info(f"Attempting to add to startup. Key: {key_path}\{key_name}, Value: {path_value}")
+    logging.info(f"Attempting to add to startup. Key: {key_path}\\{key_name}, Value: {path_value}")
     # --- < Логируем попытку ---
 
     try:
@@ -1101,7 +1101,7 @@ def remove_from_startup():
     key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
     key_name = APP_REGISTRY_KEY_NAME
     # --- Логируем попытку --- >
-    logging.info(f"Attempting to remove from startup. Key: {key_path}\{key_name}")
+    logging.info(f"Attempting to remove from startup. Key: {key_path}\\{key_name}")
     # --- < Логируем попытку ---
 
     try:

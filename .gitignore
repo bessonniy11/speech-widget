@@ -1,2 +1,10 @@
+# Build artifacts
 nuitka_dist_onefile/
-speech_widget_dist/
+nuitka_dist_installer/
+dist_installer/
+
+# Python cache
+__pycache__/
+
+.cursor
+.specify
